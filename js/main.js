@@ -35,6 +35,9 @@ const CAMERA_SPEED_DIVIDER = 50;
 
 //#region Classes
 
+/**
+ * Represent a zone that the player can't go in.
+ */
 class BoxCollider {
     constructor(x, y, width, height, attachedPostition = null) {
         this.x = x;
@@ -42,6 +45,27 @@ class BoxCollider {
         this.width = width;
         this.height = height;
         this.attachedPostition = attachedPostition;
+    }
+}
+
+/**
+ * Represent a texture in the world.
+ */
+class Texture {
+    constructor(x, y, width, height, img = false, src, color = "#000000") {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+
+        if (img) {
+            this.img = new Image();
+            this.img.src = src;
+        } else {
+            this.img = null;
+        }
+
+        this.color = color;
     }
 }
 
@@ -76,6 +100,9 @@ let cameraPosition = {x: 0, y: 0};
 // Collisions
 let boxColliders = [new BoxCollider(-300, 0, 100, 100)];
 let drawColliders = true;
+
+// Textures
+let textures = [new Texture(-300, 0, 100, 100)];
 
 //#endregion
 
@@ -251,19 +278,30 @@ setInterval(() => {
         CTX.restore();
     }
 
-    // Draw the colliders
-    if (drawColliders) {
-        for (const BOX of boxColliders) {
-            CTX.strokeStyle = "red";
-            CTX.strokeRect(BOX.x - cameraPosition.x, BOX.y - cameraPosition.y, BOX.width, BOX.height);
+    // Draw the textures
+    for (const TEXTURE of textures) {
+        if (TEXTURE.img === null) {
+            CTX.fillStyle = TEXTURE.color;
+            CTX.fillRect(TEXTURE.x - cameraPosition.x, TEXTURE.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
+        } else {
+            CTX.drawImage(TEXTURE.img, TEXTURE.x - cameraPosition.x, TEXTURE.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
         }
     }
 
-    // Draw player collision
-    CTX.strokeStyle = "red";
-    CTX.arc(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y,
-        PLAYER_RADIUS, 0, Math.PI * 2);
-    CTX.stroke();
+
+    // Draw the colliders
+    if (drawColliders) {
+        CTX.strokeStyle = "red";
+        CTX.lineWidth = 2;
+        for (const BOX of boxColliders) {
+            CTX.strokeRect(BOX.x - cameraPosition.x, BOX.y - cameraPosition.y, BOX.width, BOX.height);
+        }
+
+        // Draw player collider
+        CTX.arc(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y,
+            PLAYER_RADIUS, 0, Math.PI * 2);
+        CTX.stroke();
+    }
 
     //#endregion
 
