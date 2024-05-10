@@ -16,6 +16,7 @@ const DEFAULT_FPS = 120;
 // Player
 const PLAYER_WIDTH = 100;
 const PLAYER_HEIGHT = 100;
+const PLAYER_RADIUS = Math.sqrt(Math.pow(PLAYER_WIDTH,2) + Math.pow(PLAYER_HEIGHT,2)) / 2;
 
 const PLAYER_SPEED = 2;
 
@@ -29,6 +30,20 @@ const SWORD_ROTATING_SPEED = 5;
 
 // Camera
 const CAMERA_SPEED_DIVIDER = 50;
+
+//#endregion
+
+//#region Classes
+
+class BoxCollider {
+    constructor(x, y, width, height, attachedPostition = null) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.attachedPostition = attachedPostition;
+    }
+}
 
 //#endregion
 
@@ -49,7 +64,6 @@ let inputAttack = false;
 // Player
 let playerPosition = {x: 0, y: 0};
 let playerRotation = 0;
-let direction = 0;
 let attacking = false;
 
 // Weapons
@@ -58,6 +72,44 @@ let swordRotation = 0;
 
 // Camera
 let cameraPosition = {x: 0, y: 0};
+
+// Collisions
+let boxColliders = [new BoxCollider(-300, 0, 100, 100)];
+let drawColliders = true;
+
+//#endregion
+
+//#region Functions
+
+/**
+ * Search if a circle is inside a rectangle
+ * @param circleX Coordinate of the circle in the X axis.
+ * @param circleY Coordinate of the circle in the Y axis.
+ * @param circleRadius Radius of the circle.
+ * @param rectX Coordinate of the rectangle in the X axis.
+ * @param rectY Coordinate of the rectangle in the Y axis.
+ * @param rectWidth Width of the rectangle.
+ * @param rectHeight Height of the rectangle.
+ * @return {boolean} If the circle is inside the rectangle : true, else : false.
+ */
+function isCircleInRectangle(circleX, circleY, circleRadius, rectX, rectY, rectWidth, rectHeight) {
+    // Calculate the distance between the center of the circle and the center of the rectangle
+    let dx = Math.abs(circleX - (rectX + rectWidth / 2));
+    let dy = Math.abs(circleY - (rectY + rectHeight / 2));
+
+    // Check if the circle is outside the rectangle based on distance
+    if (dx > (rectWidth / 2 + circleRadius) || dy > (rectHeight / 2 + circleRadius)) {
+        return false;
+    }
+
+    // Check if the circle is inside the rectangle based on distance
+    if (dx <= rectWidth / 2 || dy <= rectHeight / 2) {
+        return true;
+    }
+
+    // Check if the circle is touching the rectangle's edges based on distance
+    return (dx - rectWidth / 2) ** 2 + (dy - rectHeight / 2) ** 2 <= (circleRadius ** 2);
+}
 
 //#endregion
 
@@ -133,8 +185,35 @@ setInterval(() => {
     }
 
     if (direction !== null) {
-        playerPosition.x += Math.sin((playerRotation + direction) * Math.PI / 180) * PLAYER_SPEED * deltaTime;
-        playerPosition.y -= Math.cos((playerRotation + direction) * Math.PI / 180) * PLAYER_SPEED * deltaTime;
+        // Search for collision
+        let collisionFoundX = false;
+        let collisionFoundY = false;
+        const PLAYER_CENTER_X = playerPosition.x + PLAYER_WIDTH / 2;
+        const PLAYER_CENTER_Y = playerPosition.y + PLAYER_HEIGHT / 2;
+        const PLAYER_NEXT_CENTER_X = playerPosition.x + Math.sin((playerRotation + direction) * Math.PI / 180) *
+            PLAYER_SPEED * deltaTime + PLAYER_WIDTH / 2;
+        const PLAYER_NEXT_CENTER_Y = playerPosition.y - Math.cos((playerRotation + direction) * Math.PI / 180) *
+            PLAYER_SPEED * deltaTime + PLAYER_HEIGHT / 2;
+        for (const BOX of boxColliders) {
+            // Check for collision on the X axis
+            if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.x, BOX.y, BOX.width, BOX.height)) {
+                collisionFoundX = true;
+            }
+
+            // Check for collision on the Y axis
+            if (isCircleInRectangle(PLAYER_CENTER_X, PLAYER_NEXT_CENTER_Y, PLAYER_RADIUS, BOX.x, BOX.y, BOX.width, BOX.height)) {
+                collisionFoundY = true;
+            }
+        }
+
+        // Apply the forces
+        if (!collisionFoundX) {
+            playerPosition.x += Math.sin((playerRotation + direction) * Math.PI / 180) * PLAYER_SPEED * deltaTime;
+        }
+
+        if (!collisionFoundY) {
+            playerPosition.y -= Math.cos((playerRotation + direction) * Math.PI / 180) * PLAYER_SPEED * deltaTime;
+        }
     }
 
     // Turn the sword in the direction of the player
@@ -171,6 +250,20 @@ setInterval(() => {
 
         CTX.restore();
     }
+
+    // Draw the colliders
+    if (drawColliders) {
+        for (const BOX of boxColliders) {
+            CTX.strokeStyle = "red";
+            CTX.strokeRect(BOX.x - cameraPosition.x, BOX.y - cameraPosition.y, BOX.width, BOX.height);
+        }
+    }
+
+    // Draw player collision
+    CTX.strokeStyle = "red";
+    CTX.arc(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y,
+        PLAYER_RADIUS, 0, Math.PI * 2);
+    CTX.stroke();
 
     //#endregion
 
