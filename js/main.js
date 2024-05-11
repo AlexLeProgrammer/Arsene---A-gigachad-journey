@@ -28,6 +28,8 @@ const SWORD_GAP_X = 90;
 const SWORD_GAP_X_ATTACK = 20;
 const SWORD_ROTATING_SPEED = 5;
 
+const SWORD_DAMAGE = 20;
+
 // Camera
 const CAMERA_SPEED_DIVIDER = 50;
 
@@ -39,12 +41,10 @@ const CAMERA_SPEED_DIVIDER = 50;
  * Represent a zone that the player can't go in.
  */
 class BoxCollider {
-    constructor(x, y, width, height, attachedPostition = null) {
-        this.x = x;
-        this.y = y;
+    constructor(position, width, height) {
+        this.position = position;
         this.width = width;
         this.height = height;
-        this.attachedPostition = attachedPostition;
     }
 }
 
@@ -52,9 +52,8 @@ class BoxCollider {
  * Represent a texture in the world.
  */
 class Texture {
-    constructor(x, y, width, height, img = false, src, color = "#000000") {
-        this.x = x;
-        this.y = y;
+    constructor(position, width, height, img = false, src, color = "#000000") {
+        this.position = position;
         this.width = width;
         this.height = height;
 
@@ -66,6 +65,21 @@ class Texture {
         }
 
         this.color = color;
+    }
+}
+
+/**
+ * Represent a living entity.
+ */
+class Entity {
+    struck = false;
+    constructor(position, width, height, maxLife, regenSpeed) {
+        this.position = position;
+        this.width = width;
+        this.height = height;
+        this.life = maxLife;
+        this.maxLife = maxLife;
+        this.regenSpeed = regenSpeed;
     }
 }
 
@@ -98,11 +112,15 @@ let swordRotation = 0;
 let cameraPosition = {x: 0, y: 0};
 
 // Collisions
-let boxColliders = [new BoxCollider(-300, 0, 100, 100)];
+let boxColliders = [new BoxCollider({x: -300, y: 0}, 100, 100)];
 let drawColliders = true;
 
 // Textures
-let textures = [new Texture(-300, 0, 100, 100)];
+let textures = [new Texture({x: -300, y: 0}, 100, 100)];
+
+// Entities
+let entities = [new Entity({x: 300, y: 0}, 100, 100, 100, 0.1)];
+let drawEntities = true;
 
 //#endregion
 
@@ -138,6 +156,21 @@ function isCircleInRectangle(circleX, circleY, circleRadius, rectX, rectY, rectW
     return (dx - rectWidth / 2) ** 2 + (dy - rectHeight / 2) ** 2 <= (circleRadius ** 2);
 }
 
+/**
+ * Get the rotated version of a point around another one.
+ * @param cX Coordinate of the center point in the X axis.
+ * @param cY Coordinate of the center point in the Y axis.
+ * @param x Coordinate of the point to rotate in the X axis.
+ * @param y Coordinate of the point to rotate in the Y axis.
+ * @param angle Angle to rotate the point in degrees.
+ * @return {{x: number, y: number}} The rotated point.
+ */
+function getRotatedPoint(cX, cY, x, y, angle) {
+    const RADIANS_ANGLE = angle * Math.PI / 180;
+    return {x: cX + (x - cX) * Math.cos(RADIANS_ANGLE) - (y - cY) * Math.sin(RADIANS_ANGLE),
+        y: cY + (x - cX) * Math.sin(RADIANS_ANGLE) + (y - cY) * Math.cos(RADIANS_ANGLE)};
+}
+
 //#endregion
 
 // Start the game
@@ -170,7 +203,6 @@ setInterval(() => {
     }
 
     //#endregion
-
 
     //#region Movements
 
@@ -223,12 +255,12 @@ setInterval(() => {
             PLAYER_SPEED * deltaTime + PLAYER_HEIGHT / 2;
         for (const BOX of boxColliders) {
             // Check for collision on the X axis
-            if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.x, BOX.y, BOX.width, BOX.height)) {
+            if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
                 collisionFoundX = true;
             }
 
             // Check for collision on the Y axis
-            if (isCircleInRectangle(PLAYER_CENTER_X, PLAYER_NEXT_CENTER_Y, PLAYER_RADIUS, BOX.x, BOX.y, BOX.width, BOX.height)) {
+            if (isCircleInRectangle(PLAYER_CENTER_X, PLAYER_NEXT_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
                 collisionFoundY = true;
             }
         }
@@ -246,6 +278,38 @@ setInterval(() => {
     // Turn the sword in the direction of the player
     if (!attacking) {
         swordRotation = playerRotation;
+    }
+
+    //#endregion
+
+    //#region Entities
+    // Calculate the hit point of the sword
+    let swordHitPoint = getRotatedPoint(PLAYER_WIDTH / 2, PLAYER_HEIGHT / 2,
+        -SWORD_WIDTH + SWORD_GAP_X_ATTACK, PLAYER_HEIGHT / 2, swordRotation);
+    swordHitPoint.x += playerPosition.x;
+    swordHitPoint.y += playerPosition.y;
+
+    for (let ENTITY of entities) {
+        // Regen
+        if (ENTITY.life < ENTITY.maxLife) {
+            ENTITY.life += ENTITY.regenSpeed;
+        } else if (ENTITY.life > ENTITY.maxLife) {
+            ENTITY.life = ENTITY.maxLife;
+        }
+
+        // Take damage
+        if (attacking) {
+            if (!ENTITY.struck && swordHitPoint.x > ENTITY.position.x && swordHitPoint.x < ENTITY.position.x + ENTITY.width &&
+            swordHitPoint.y > ENTITY.position.y && swordHitPoint.y < ENTITY.position.y + ENTITY.height) {
+                ENTITY.life -= SWORD_DAMAGE;
+                ENTITY.struck = true;
+                if (ENTITY.life < 0) {
+                    entities.splice(entities.indexOf(ENTITY), 1);
+                }
+            }
+        } else {
+            ENTITY.struck = false;
+        }
     }
 
     //#endregion
@@ -282,25 +346,39 @@ setInterval(() => {
     for (const TEXTURE of textures) {
         if (TEXTURE.img === null) {
             CTX.fillStyle = TEXTURE.color;
-            CTX.fillRect(TEXTURE.x - cameraPosition.x, TEXTURE.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
+            CTX.fillRect(TEXTURE.position.x - cameraPosition.x, TEXTURE.position.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
         } else {
-            CTX.drawImage(TEXTURE.img, TEXTURE.x - cameraPosition.x, TEXTURE.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
+            CTX.drawImage(TEXTURE.img, TEXTURE.position.x - cameraPosition.x, TEXTURE.position.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
         }
     }
 
+    // Draw the entities
+    if (drawEntities) {
+        CTX.strokeStyle = "green";
+        CTX.lineWidth = 2;
+        for (const ENTITY of entities) {
+            CTX.strokeRect(ENTITY.position.x - cameraPosition.x, ENTITY.position.y - cameraPosition.y, ENTITY.width, ENTITY.height);
+            CTX.font = "30px roboto";
+            CTX.fillText(Math.floor(ENTITY.life), ENTITY.position.x + 20 - cameraPosition.x, ENTITY.position.y + 50 - cameraPosition.y);
+        }
+    }
 
     // Draw the colliders
     if (drawColliders) {
         CTX.strokeStyle = "red";
         CTX.lineWidth = 2;
         for (const BOX of boxColliders) {
-            CTX.strokeRect(BOX.x - cameraPosition.x, BOX.y - cameraPosition.y, BOX.width, BOX.height);
+            CTX.strokeRect(BOX.position.x - cameraPosition.x, BOX.position.y - cameraPosition.y, BOX.width, BOX.height);
         }
 
         // Draw player collider
         CTX.arc(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y,
             PLAYER_RADIUS, 0, Math.PI * 2);
         CTX.stroke();
+
+        // Draw the hit point of the sword
+        CTX.fillStyle = "green";
+        CTX.fillRect(swordHitPoint.x - 5 - cameraPosition.x, swordHitPoint.y - 5 - cameraPosition.y, 10, 10);
     }
 
     //#endregion
