@@ -75,19 +75,25 @@ class Texture {
  * Represent a living entity.
  */
 class Entity {
+    rotation = 0;
     struck = false;
-    direction = 0; // 0: no direction, 1: forward, 2: forward-right ... 8: forward-left
     waitTime = 0;
+    timeWhenStartedWaiting = 0;
+    goalPoint = {x: 0, y: 0};
 
-    constructor(position, width, height, maxLife, regenSpeed, move = false, followPlayer = false, texture = null, collider = null) {
+    constructor(position, width, height, maxLife, regenSpeed, maxWaitTime, move = false, followPlayer = false,
+                moveSpeed = 0, rotationSpeed = 0, texture = null, collider = null) {
         this.position = position;
         this.width = width;
         this.height = height;
         this.life = maxLife;
         this.maxLife = maxLife;
         this.regenSpeed = regenSpeed;
+        this.maxWaitTime = maxWaitTime;
         this.move = move;
         this.followPLayer = followPlayer;
+        this.moveSpeed = moveSpeed;
+        this.rotationSpeed = rotationSpeed;
         this.texture = texture;
         this.collider= collider;
     }
@@ -122,7 +128,7 @@ let swordRotation = 0;
 let cameraPosition = {x: 0, y: 0};
 
 // Collisions
-let boxColliders = [new BoxCollider({x: -300, y: 0}, 100, 100), new BoxCollider()];
+let boxColliders = [new BoxCollider(playerPosition, PLAYER_WIDTH, PLAYER_HEIGHT), new BoxCollider({x: -300, y: 0}, 100, 100), new BoxCollider()];
 let drawColliders = true;
 
 // Textures
@@ -130,7 +136,8 @@ let textures = [new Texture({x: -300, y: 0}, 100, 100), new Texture()];
 
 // Entities
 let entities = [
-    new Entity({x: 300, y: 0}, 100, 100, 100, 0.01, false, false, textures[1], boxColliders[1])
+    new Entity({x: 300, y: 0}, 100, 100, 100, 0.01, 0,
+        true, true, 1, 1, textures[1], boxColliders[2])
 ];
 let drawEntities = true;
 
@@ -301,14 +308,16 @@ setInterval(() => {
         const PLAYER_NEXT_CENTER_Y = playerPosition.y - Math.cos((playerRotation + direction) * Math.PI / 180) *
             PLAYER_SPEED * deltaTime + PLAYER_HEIGHT / 2;
         for (const BOX of localBoxColliders) {
-            // Check for collision on the X axis
-            if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
-                collisionFoundX = true;
-            }
+            if (BOX !== boxColliders[0]) {
+                // Check for collision on the X axis
+                if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
+                    collisionFoundX = true;
+                }
 
-            // Check for collision on the Y axis
-            if (isCircleInRectangle(PLAYER_CENTER_X, PLAYER_NEXT_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
-                collisionFoundY = true;
+                // Check for collision on the Y axis
+                if (isCircleInRectangle(PLAYER_CENTER_X, PLAYER_NEXT_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
+                    collisionFoundY = true;
+                }
             }
         }
 
@@ -366,6 +375,60 @@ setInterval(() => {
         }
 
         //#TODO Movements
+        if (ENTITY.move) {
+            let leftPoint = getRotatedPoint(ENTITY.position.x + ENTITY.width / 2,
+                ENTITY.position.y + ENTITY.height / 2, ENTITY.position.x, ENTITY.position.y, ENTITY.rotation);
+            let rightPoint = getRotatedPoint(ENTITY.position.x + ENTITY.width / 2,
+                ENTITY.position.y + ENTITY.height / 2, ENTITY.position.x + ENTITY.width, ENTITY.position.y, ENTITY.rotation);
+
+            if (ENTITY.followPLayer) {
+                ENTITY.waitTime = 0;
+                ENTITY.goalPoint = {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2};
+            }
+
+            // Test if the entity have finished waiting
+            if (performance.now() - ENTITY.timeWhenStartedWaiting >= ENTITY.waitTime) {
+                // Choose witch way to turn
+                if (distance(leftPoint, ENTITY.goalPoint) > distance(rightPoint, ENTITY.goalPoint)) {
+                    ENTITY.rotation -= ENTITY.rotationSpeed;
+                } else {
+                    ENTITY.rotation += ENTITY.rotationSpeed;
+                }
+
+                // Search for collision
+                let collisionFoundX = false;
+                let collisionFoundY = false;
+                const ENTITY_CENTER_X = ENTITY.position.x + PLAYER_WIDTH / 2;
+                const ENTITY_CENTER_Y = ENTITY.position.y + PLAYER_HEIGHT / 2;
+                const ENTITY_NEXT_CENTER_X = ENTITY.position.x + Math.sin(ENTITY.rotation * Math.PI / 180) *
+                    ENTITY.moveSpeed * deltaTime + ENTITY.width / 2;
+                const ENTITY_NEXT_CENTER_Y = ENTITY.position.y - Math.cos(ENTITY.rotation * Math.PI / 180) *
+                    ENTITY.moveSpeed * deltaTime + ENTITY.height / 2;
+                const ENTITY_RADIUS = Math.sqrt(Math.pow(ENTITY.width, 2) + Math.pow(ENTITY.height, 2)) / 2;
+                for (const BOX of localBoxColliders) {
+                    if (BOX !== ENTITY.collider) {
+                        // Check for collision on the X axis
+                        if (isCircleInRectangle(ENTITY_CENTER_X, ENTITY_CENTER_Y, ENTITY_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
+                            collisionFoundX = true;
+                        }
+
+                        // Check for collision on the Y axis
+                        if (isCircleInRectangle(ENTITY_NEXT_CENTER_X, ENTITY_NEXT_CENTER_Y, ENTITY_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
+                            collisionFoundY = true;
+                        }
+                    }
+                }
+
+                // Move forward
+                if (!collisionFoundX) {
+                    ENTITY.position.x -= Math.sin(ENTITY.rotation * Math.PI / 180) * ENTITY.moveSpeed * deltaTime;
+                }
+
+                if (!collisionFoundY) {
+                    ENTITY.position.y += Math.cos(ENTITY.rotation * Math.PI / 180) * ENTITY.moveSpeed * deltaTime;
+                }
+            }
+        }
 
         // Transform the texture size and position to the entity size and position
         if (ENTITY.texture !== null) {
