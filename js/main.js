@@ -13,6 +13,9 @@ const CTX = CANVAS.getContext("2d");
 // Delta-time
 const DEFAULT_FPS = 120;
 
+// Game
+const SIMULATION_DISTANCE = 1000;
+
 // Player
 const PLAYER_WIDTH = 100;
 const PLAYER_HEIGHT = 100;
@@ -180,6 +183,16 @@ function getRotatedPoint(cX, cY, x, y, angle) {
         y: cY + (x - cX) * Math.sin(RADIANS_ANGLE) + (y - cY) * Math.cos(RADIANS_ANGLE)};
 }
 
+/**
+ * Get the distance between two points.
+ * @param p0 First point.
+ * @param p1 Second point.
+ * @return {number} The distance between the two points in parameters.
+ */
+function distance(p0, p1) {
+    return Math.sqrt(Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2));
+}
+
 //#endregion
 
 // Start the game
@@ -195,6 +208,31 @@ setInterval(() => {
     // Update camera position
     cameraPosition.x += (playerPosition.x + PLAYER_WIDTH / 2 - CANVAS.width  / 2 - cameraPosition.x) / CAMERA_SPEED_DIVIDER * deltaTime;
     cameraPosition.y += (playerPosition.y + PLAYER_HEIGHT / 2 - CANVAS.height / 2 - cameraPosition.y) / CAMERA_SPEED_DIVIDER * deltaTime;
+
+    // Get the textures, colliders and entities in simulation distance
+    let localTextures = [];
+    for (const TEXTURE of textures) {
+        if (distance({x: TEXTURE.position.x + TEXTURE.width / 2, y: TEXTURE.position.y + TEXTURE.height / 2},
+            {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
+            localTextures.push(TEXTURE);
+        }
+    }
+
+    let localBoxColliders = [];
+    for (const BOX of boxColliders) {
+        if (distance({x: BOX.position.x + BOX.width / 2, y: BOX.position.y + BOX.height / 2},
+            {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
+                localBoxColliders.push(BOX);
+        }
+    }
+
+    let localEntities = [];
+    for (const ENTITY of entities) {
+        if (distance({x: ENTITY.position.x + ENTITY.width / 2, y: ENTITY.position.y + ENTITY.height / 2},
+            {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
+            localEntities.push(ENTITY);
+        }
+    }
 
     //#region Attack
 
@@ -262,7 +300,7 @@ setInterval(() => {
             PLAYER_SPEED * deltaTime + PLAYER_WIDTH / 2;
         const PLAYER_NEXT_CENTER_Y = playerPosition.y - Math.cos((playerRotation + direction) * Math.PI / 180) *
             PLAYER_SPEED * deltaTime + PLAYER_HEIGHT / 2;
-        for (const BOX of boxColliders) {
+        for (const BOX of localBoxColliders) {
             // Check for collision on the X axis
             if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
                 collisionFoundX = true;
@@ -298,7 +336,7 @@ setInterval(() => {
     swordHitPoint.x += playerPosition.x;
     swordHitPoint.y += playerPosition.y;
 
-    for (let ENTITY of entities) {
+    for (let ENTITY of localEntities) {
         // Regen
         if (ENTITY.life < ENTITY.maxLife) {
             ENTITY.life += ENTITY.regenSpeed;
@@ -326,6 +364,8 @@ setInterval(() => {
         } else {
             ENTITY.struck = false;
         }
+
+        //#TODO Movements
 
         // Transform the texture size and position to the entity size and position
         if (ENTITY.texture !== null) {
@@ -375,7 +415,7 @@ setInterval(() => {
     }
 
     // Draw the textures
-    for (const TEXTURE of textures) {
+    for (const TEXTURE of localTextures) {
         if (TEXTURE.img === null) {
             CTX.fillStyle = TEXTURE.color;
             CTX.fillRect(TEXTURE.position.x - cameraPosition.x, TEXTURE.position.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
@@ -388,7 +428,7 @@ setInterval(() => {
     if (drawEntities) {
         CTX.strokeStyle = "green";
         CTX.lineWidth = 4;
-        for (const ENTITY of entities) {
+        for (const ENTITY of localEntities) {
             CTX.strokeRect(ENTITY.position.x - cameraPosition.x, ENTITY.position.y - cameraPosition.y, ENTITY.width, ENTITY.height);
             CTX.font = "30px roboto";
             CTX.fillText(Math.floor(ENTITY.life), ENTITY.position.x - cameraPosition.x, ENTITY.position.y - 10 - cameraPosition.y);
@@ -399,7 +439,7 @@ setInterval(() => {
     if (drawColliders) {
         CTX.strokeStyle = "red";
         CTX.lineWidth = 2;
-        for (const BOX of boxColliders) {
+        for (const BOX of localBoxColliders) {
             CTX.strokeRect(BOX.position.x - cameraPosition.x, BOX.position.y - cameraPosition.y, BOX.width, BOX.height);
         }
 
