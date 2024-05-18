@@ -41,7 +41,7 @@ const CAMERA_SPEED_DIVIDER = 50;
  * Represent a zone that the player can't go in.
  */
 class BoxCollider {
-    constructor(position, width, height) {
+    constructor(position = {x: 0, y: 0}, width = 0, height = 0) {
         this.position = position;
         this.width = width;
         this.height = height;
@@ -73,13 +73,14 @@ class Texture {
  */
 class Entity {
     struck = false;
-    constructor(position, width, height, maxLife, regenSpeed) {
+    constructor(position, width, height, maxLife, regenSpeed, collider = null) {
         this.position = position;
         this.width = width;
         this.height = height;
         this.life = maxLife;
         this.maxLife = maxLife;
         this.regenSpeed = regenSpeed;
+        this.collider= collider;
     }
 }
 
@@ -112,14 +113,14 @@ let swordRotation = 0;
 let cameraPosition = {x: 0, y: 0};
 
 // Collisions
-let boxColliders = [new BoxCollider({x: -300, y: 0}, 100, 100)];
+let boxColliders = [new BoxCollider({x: -300, y: 0}, 100, 100), new BoxCollider()];
 let drawColliders = true;
 
 // Textures
 let textures = [new Texture({x: -300, y: 0}, 100, 100)];
 
 // Entities
-let entities = [new Entity({x: 300, y: 0}, 100, 100, 100, 0.1)];
+let entities = [new Entity({x: 300, y: 0}, 100, 100, 100, 0.1, boxColliders[1])];
 let drawEntities = true;
 
 //#endregion
@@ -304,11 +305,22 @@ setInterval(() => {
                 ENTITY.life -= SWORD_DAMAGE;
                 ENTITY.struck = true;
                 if (ENTITY.life < 0) {
+                    if (ENTITY.collider !== null) {
+                        boxColliders.splice(boxColliders.indexOf(ENTITY.collider), 1);
+                    }
                     entities.splice(entities.indexOf(ENTITY), 1);
                 }
             }
         } else {
             ENTITY.struck = false;
+        }
+
+        // Transform the collider size and position to the entity size and position
+        if (ENTITY.collider !== null) {
+            let colliderIndex = boxColliders.indexOf(ENTITY.collider);
+            boxColliders[colliderIndex].position = ENTITY.position;
+            boxColliders[colliderIndex].width = ENTITY.width;
+            boxColliders[colliderIndex].height = ENTITY.height;
         }
     }
 
