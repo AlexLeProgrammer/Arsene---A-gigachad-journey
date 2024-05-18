@@ -52,7 +52,7 @@ class BoxCollider {
  * Represent a texture in the world.
  */
 class Texture {
-    constructor(position, width, height, img = false, src, color = "#000000") {
+    constructor(position = {x: 0, y: 0}, width = 0, height = 0, img = false, src, color = "#000000") {
         this.position = position;
         this.width = width;
         this.height = height;
@@ -73,13 +73,19 @@ class Texture {
  */
 class Entity {
     struck = false;
-    constructor(position, width, height, maxLife, regenSpeed, collider = null) {
+    direction = 0; // 0: no direction, 1: forward, 2: forward-right ... 8: forward-left
+    waitTime = 0;
+
+    constructor(position, width, height, maxLife, regenSpeed, move = false, followPlayer = false, texture = null, collider = null) {
         this.position = position;
         this.width = width;
         this.height = height;
         this.life = maxLife;
         this.maxLife = maxLife;
         this.regenSpeed = regenSpeed;
+        this.move = move;
+        this.followPLayer = followPlayer;
+        this.texture = texture;
         this.collider= collider;
     }
 }
@@ -117,10 +123,12 @@ let boxColliders = [new BoxCollider({x: -300, y: 0}, 100, 100), new BoxCollider(
 let drawColliders = true;
 
 // Textures
-let textures = [new Texture({x: -300, y: 0}, 100, 100)];
+let textures = [new Texture({x: -300, y: 0}, 100, 100), new Texture()];
 
 // Entities
-let entities = [new Entity({x: 300, y: 0}, 100, 100, 100, 0.1, boxColliders[1])];
+let entities = [
+    new Entity({x: 300, y: 0}, 100, 100, 100, 0.01, false, false, textures[1], boxColliders[1])
+];
 let drawEntities = true;
 
 //#endregion
@@ -305,14 +313,26 @@ setInterval(() => {
                 ENTITY.life -= SWORD_DAMAGE;
                 ENTITY.struck = true;
                 if (ENTITY.life < 0) {
+                    if (ENTITY.texture !== null) {
+                        textures.splice(textures.indexOf(ENTITY.texture), 1);
+                    }
                     if (ENTITY.collider !== null) {
                         boxColliders.splice(boxColliders.indexOf(ENTITY.collider), 1);
                     }
                     entities.splice(entities.indexOf(ENTITY), 1);
+                    continue;
                 }
             }
         } else {
             ENTITY.struck = false;
+        }
+
+        // Transform the texture size and position to the entity size and position
+        if (ENTITY.texture !== null) {
+            let textureIndex = textures.indexOf(ENTITY.texture);
+            textures[textureIndex].position = ENTITY.position;
+            textures[textureIndex].width = ENTITY.width;
+            textures[textureIndex].height = ENTITY.height;
         }
 
         // Transform the collider size and position to the entity size and position
@@ -367,11 +387,11 @@ setInterval(() => {
     // Draw the entities
     if (drawEntities) {
         CTX.strokeStyle = "green";
-        CTX.lineWidth = 2;
+        CTX.lineWidth = 4;
         for (const ENTITY of entities) {
             CTX.strokeRect(ENTITY.position.x - cameraPosition.x, ENTITY.position.y - cameraPosition.y, ENTITY.width, ENTITY.height);
             CTX.font = "30px roboto";
-            CTX.fillText(Math.floor(ENTITY.life), ENTITY.position.x + 20 - cameraPosition.x, ENTITY.position.y + 50 - cameraPosition.y);
+            CTX.fillText(Math.floor(ENTITY.life), ENTITY.position.x - cameraPosition.x, ENTITY.position.y - 10 - cameraPosition.y);
         }
     }
 
