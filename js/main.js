@@ -19,8 +19,6 @@ const SIMULATION_DISTANCE = 1000;
 // Player
 const PLAYER_WIDTH = 100;
 const PLAYER_HEIGHT = 100;
-const PLAYER_RADIUS = Math.sqrt(Math.pow(PLAYER_WIDTH,2) + Math.pow(PLAYER_HEIGHT,2)) / 2;
-
 const PLAYER_SPEED = 2;
 
 // Weapons
@@ -55,10 +53,12 @@ class BoxCollider {
  * Represent a texture in the world.
  */
 class Texture {
-    constructor(position = {x: 0, y: 0}, width = 0, height = 0, img = false, src, color = "#000000") {
+    constructor(position = {x: 0, y: 0}, width = 0, height = 0,
+                rotation = 0, img = false, src, color = "#000000") {
         this.position = position;
         this.width = width;
         this.height = height;
+        this.rotation = rotation;
 
         if (img) {
             this.img = new Image();
@@ -81,8 +81,11 @@ class Entity {
     timeWhenStartedWaiting = 0;
     goalPoint = {x: 0, y: 0};
 
-    constructor(position, width, height, maxLife, regenSpeed, maxWaitTime, move = false, followPlayer = false,
+    constructor(mainCharacter = false, position = {x: 0, y: 0},
+                width = 100, height = 100, maxLife = 100, regenSpeed = 0.01,
+                maxWaitTime = 0, move = false, followPlayer = false,
                 moveSpeed = 0, rotationSpeed = 0, texture = null, collider = null) {
+        this.mainCharacter = mainCharacter;
         this.position = position;
         this.width = width;
         this.height = height;
@@ -128,16 +131,16 @@ let swordRotation = 0;
 let cameraPosition = {x: 0, y: 0};
 
 // Collisions
-let boxColliders = [new BoxCollider(playerPosition, PLAYER_WIDTH, PLAYER_HEIGHT), new BoxCollider({x: -300, y: 0}, 100, 100), new BoxCollider()];
+let boxColliders = [new BoxCollider(), new BoxCollider({x: -300, y: 0}, 100, 100)];
 let drawColliders = true;
 
 // Textures
-let textures = [new Texture({x: -300, y: 0}, 100, 100), new Texture()];
+let textures = [new Texture(), new Texture({x: -300, y: 0}, 100, 100, 0)];
 
 // Entities
 let entities = [
-    new Entity({x: 300, y: 0}, 100, 100, 100, 0.01, 0,
-        true, true, 1, 1, textures[1], boxColliders[2])
+    new Entity(true, {x: 0, y: 0}, PLAYER_WIDTH, PLAYER_HEIGHT, 100,
+        0.01, 0, true, false, PLAYER_SPEED, 0, textures[0], boxColliders[0])
 ];
 let drawEntities = true;
 
@@ -200,6 +203,18 @@ function distance(p0, p1) {
     return Math.sqrt(Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2));
 }
 
+/**
+ * @return {{mainCharacter}|*|null} The player if there is one or null if not.
+ */
+function getPlayer() {
+    for (const ENTITY of entities) {
+        if (ENTITY.mainCharacter) {
+            return ENTITY;
+        }
+    }
+    return null;
+}
+
 //#endregion
 
 // Start the game
@@ -216,30 +231,38 @@ setInterval(() => {
     cameraPosition.x += (playerPosition.x + PLAYER_WIDTH / 2 - CANVAS.width  / 2 - cameraPosition.x) / CAMERA_SPEED_DIVIDER * deltaTime;
     cameraPosition.y += (playerPosition.y + PLAYER_HEIGHT / 2 - CANVAS.height / 2 - cameraPosition.y) / CAMERA_SPEED_DIVIDER * deltaTime;
 
+    //#region GetElementInRange
+
     // Get the textures, colliders and entities in simulation distance
+    const PLAYER = getPlayer();
     let localTextures = [];
-    for (const TEXTURE of textures) {
-        if (distance({x: TEXTURE.position.x + TEXTURE.width / 2, y: TEXTURE.position.y + TEXTURE.height / 2},
-            {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
-            localTextures.push(TEXTURE);
-        }
-    }
-
     let localBoxColliders = [];
-    for (const BOX of boxColliders) {
-        if (distance({x: BOX.position.x + BOX.width / 2, y: BOX.position.y + BOX.height / 2},
-            {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
+    let localEntities = [];
+
+    if (PLAYER !== null) {
+        for (const TEXTURE of textures) {
+            if (distance({x: TEXTURE.position.x + TEXTURE.width / 2, y: TEXTURE.position.y + TEXTURE.height / 2},
+                {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
+                localTextures.push(TEXTURE);
+            }
+        }
+
+        for (const BOX of boxColliders) {
+            if (distance({x: BOX.position.x + BOX.width / 2, y: BOX.position.y + BOX.height / 2},
+                {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
                 localBoxColliders.push(BOX);
+            }
+        }
+
+        for (const ENTITY of entities) {
+            if (distance({x: ENTITY.position.x + ENTITY.width / 2, y: ENTITY.position.y + ENTITY.height / 2},
+                {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
+                localEntities.push(ENTITY);
+            }
         }
     }
 
-    let localEntities = [];
-    for (const ENTITY of entities) {
-        if (distance({x: ENTITY.position.x + ENTITY.width / 2, y: ENTITY.position.y + ENTITY.height / 2},
-            {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2}) <= SIMULATION_DISTANCE) {
-            localEntities.push(ENTITY);
-        }
-    }
+    //#endregion
 
     //#region Attack
 
@@ -248,87 +271,12 @@ setInterval(() => {
         attacking = true;
     }
 
-    // Turn the sword
+    // Turn the sword to do the attack animation
     if (attacking && swordRotation < 360 + playerRotation) {
         swordRotation += SWORD_ROTATING_SPEED;
     } else if (attacking) {
         attacking = false;
         swordRotation = playerRotation;
-    }
-
-    //#endregion
-
-    //#region Movements
-
-    // Calculate the speed of the player and apply it
-    let direction = null;
-
-    // Straight direction
-    if (inputForward && !inputBackward && !inputLeft && !inputRight) {
-        direction = 0;
-    }
-
-    if (inputBackward && !inputForward && !inputLeft && !inputRight) {
-        direction = 180;
-    }
-
-    if (inputLeft && !inputForward && !inputBackward && !inputRight) {
-        direction = -90;
-    }
-
-    if (inputRight && !inputForward && !inputBackward && !inputLeft) {
-        direction = 90;
-    }
-
-    // Diagonals
-    if (inputForward && inputLeft && !inputBackward && !inputRight) {
-        direction = -45;
-    }
-
-    if (inputForward && inputRight && !inputBackward && !inputLeft) {
-        direction = 45;
-    }
-
-    if (inputBackward && inputLeft && !inputForward && !inputRight) {
-        direction = -135;
-    }
-
-    if (inputBackward && inputRight && !inputForward && !inputLeft) {
-        direction = 135;
-    }
-
-    if (direction !== null) {
-        // Search for collision
-        let collisionFoundX = false;
-        let collisionFoundY = false;
-        const PLAYER_CENTER_X = playerPosition.x + PLAYER_WIDTH / 2;
-        const PLAYER_CENTER_Y = playerPosition.y + PLAYER_HEIGHT / 2;
-        const PLAYER_NEXT_CENTER_X = playerPosition.x + Math.sin((playerRotation + direction) * Math.PI / 180) *
-            PLAYER_SPEED * deltaTime + PLAYER_WIDTH / 2;
-        const PLAYER_NEXT_CENTER_Y = playerPosition.y - Math.cos((playerRotation + direction) * Math.PI / 180) *
-            PLAYER_SPEED * deltaTime + PLAYER_HEIGHT / 2;
-        for (const BOX of localBoxColliders) {
-            if (BOX !== boxColliders[0]) {
-                // Check for collision on the X axis
-                if (isCircleInRectangle(PLAYER_NEXT_CENTER_X, PLAYER_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
-                    collisionFoundX = true;
-                }
-
-                // Check for collision on the Y axis
-                if (isCircleInRectangle(PLAYER_CENTER_X, PLAYER_NEXT_CENTER_Y, PLAYER_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
-                    collisionFoundY = true;
-                }
-            }
-        }
-
-        // Apply the forces
-        if (!collisionFoundX) {
-            playerPosition.x += Math.sin((playerRotation + direction) * Math.PI / 180) * PLAYER_SPEED * deltaTime;
-        }
-
-        if (!collisionFoundY) {
-            playerPosition.y -= Math.cos((playerRotation + direction) * Math.PI / 180) * PLAYER_SPEED * deltaTime;
-        }
     }
 
     // Turn the sword in the direction of the player
@@ -339,11 +287,12 @@ setInterval(() => {
     //#endregion
 
     //#region Entities
+
     // Calculate the hit point of the sword
     let swordHitPoint = getRotatedPoint(PLAYER_WIDTH / 2, PLAYER_HEIGHT / 2,
         -SWORD_WIDTH + SWORD_GAP_X_ATTACK, PLAYER_HEIGHT / 2, swordRotation);
-    swordHitPoint.x += playerPosition.x;
-    swordHitPoint.y += playerPosition.y;
+    swordHitPoint.x += PLAYER.position.x;
+    swordHitPoint.y += PLAYER.position.y;
 
     for (let ENTITY of localEntities) {
         // Regen
@@ -354,78 +303,128 @@ setInterval(() => {
         }
 
         // Take damage
-        if (attacking) {
-            if (!ENTITY.struck && swordHitPoint.x > ENTITY.position.x && swordHitPoint.x < ENTITY.position.x + ENTITY.width &&
-            swordHitPoint.y > ENTITY.position.y && swordHitPoint.y < ENTITY.position.y + ENTITY.height) {
-                ENTITY.life -= SWORD_DAMAGE;
-                ENTITY.struck = true;
-                if (ENTITY.life < 0) {
-                    if (ENTITY.texture !== null) {
-                        textures.splice(textures.indexOf(ENTITY.texture), 1);
+        if (!ENTITY.mainCharacter) {
+            if (attacking) {
+                if (!ENTITY.struck && swordHitPoint.x > ENTITY.position.x && swordHitPoint.x < ENTITY.position.x + ENTITY.width &&
+                    swordHitPoint.y > ENTITY.position.y && swordHitPoint.y < ENTITY.position.y + ENTITY.height) {
+                    ENTITY.life -= SWORD_DAMAGE;
+                    ENTITY.struck = true;
+                    if (ENTITY.life < 0) {
+                        if (ENTITY.texture !== null) {
+                            textures.splice(textures.indexOf(ENTITY.texture), 1);
+                        }
+                        if (ENTITY.collider !== null) {
+                            boxColliders.splice(boxColliders.indexOf(ENTITY.collider), 1);
+                        }
+                        entities.splice(entities.indexOf(ENTITY), 1);
+                        continue;
                     }
-                    if (ENTITY.collider !== null) {
-                        boxColliders.splice(boxColliders.indexOf(ENTITY.collider), 1);
-                    }
-                    entities.splice(entities.indexOf(ENTITY), 1);
-                    continue;
                 }
+            } else {
+                ENTITY.struck = false;
             }
-        } else {
-            ENTITY.struck = false;
         }
 
-        //#TODO Movements
+        // Movements of the entity
         if (ENTITY.move) {
-            let leftPoint = getRotatedPoint(ENTITY.position.x + ENTITY.width / 2,
-                ENTITY.position.y + ENTITY.height / 2, ENTITY.position.x, ENTITY.position.y, ENTITY.rotation);
-            let rightPoint = getRotatedPoint(ENTITY.position.x + ENTITY.width / 2,
-                ENTITY.position.y + ENTITY.height / 2, ENTITY.position.x + ENTITY.width, ENTITY.position.y, ENTITY.rotation);
+            let leftPoint = 0;
+            let rightPoint = 0;
 
-            if (ENTITY.followPLayer) {
-                ENTITY.waitTime = 0;
-                ENTITY.goalPoint = {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2};
+            if (!ENTITY.mainCharacter) {
+                leftPoint = getRotatedPoint(ENTITY.position.x + ENTITY.width / 2,
+                    ENTITY.position.y + ENTITY.height / 2, ENTITY.position.x, ENTITY.position.y, ENTITY.rotation);
+                rightPoint = getRotatedPoint(ENTITY.position.x + ENTITY.width / 2,
+                    ENTITY.position.y + ENTITY.height / 2, ENTITY.position.x + ENTITY.width, ENTITY.position.y, ENTITY.rotation);
+
+                if (ENTITY.followPLayer) {
+                    ENTITY.waitTime = 0;
+                    ENTITY.goalPoint = {x: playerPosition.x + PLAYER_WIDTH / 2, y: playerPosition.y + PLAYER_HEIGHT / 2};
+                }
             }
 
             // Test if the entity have finished waiting
-            if (performance.now() - ENTITY.timeWhenStartedWaiting >= ENTITY.waitTime) {
-                // Choose witch way to turn
-                if (distance(leftPoint, ENTITY.goalPoint) > distance(rightPoint, ENTITY.goalPoint)) {
-                    ENTITY.rotation -= ENTITY.rotationSpeed;
+            if (ENTITY.mainCharacter || performance.now() - ENTITY.timeWhenStartedWaiting >= ENTITY.waitTime) {
+                let direction = null;
+                if (ENTITY.mainCharacter) {
+                    // Calculate the speed of the player and apply it
+                    // Straight direction
+                    if (inputForward && !inputBackward && !inputLeft && !inputRight) {
+                        direction = 0;
+                    }
+
+                    if (inputBackward && !inputForward && !inputLeft && !inputRight) {
+                        direction = 180;
+                    }
+
+                    if (inputLeft && !inputForward && !inputBackward && !inputRight) {
+                        direction = -90;
+                    }
+
+                    if (inputRight && !inputForward && !inputBackward && !inputLeft) {
+                        direction = 90;
+                    }
+
+                    // Diagonals
+                    if (inputForward && inputLeft && !inputBackward && !inputRight) {
+                        direction = -45;
+                    }
+
+                    if (inputForward && inputRight && !inputBackward && !inputLeft) {
+                        direction = 45;
+                    }
+
+                    if (inputBackward && inputLeft && !inputForward && !inputRight) {
+                        direction = -135;
+                    }
+
+                    if (inputBackward && inputRight && !inputForward && !inputLeft) {
+                        direction = 135;
+                    }
+
+                    // Apply the player rotation to his physical entity
+                    ENTITY.rotation = playerRotation + direction;
                 } else {
-                    ENTITY.rotation += ENTITY.rotationSpeed;
-                }
-
-                // Search for collision
-                let collisionFoundX = false;
-                let collisionFoundY = false;
-                const ENTITY_CENTER_X = ENTITY.position.x + PLAYER_WIDTH / 2;
-                const ENTITY_CENTER_Y = ENTITY.position.y + PLAYER_HEIGHT / 2;
-                const ENTITY_NEXT_CENTER_X = ENTITY.position.x + Math.sin(ENTITY.rotation * Math.PI / 180) *
-                    ENTITY.moveSpeed * deltaTime + ENTITY.width / 2;
-                const ENTITY_NEXT_CENTER_Y = ENTITY.position.y - Math.cos(ENTITY.rotation * Math.PI / 180) *
-                    ENTITY.moveSpeed * deltaTime + ENTITY.height / 2;
-                const ENTITY_RADIUS = Math.sqrt(Math.pow(ENTITY.width, 2) + Math.pow(ENTITY.height, 2)) / 2;
-                for (const BOX of localBoxColliders) {
-                    if (BOX !== ENTITY.collider) {
-                        // Check for collision on the X axis
-                        if (isCircleInRectangle(ENTITY_CENTER_X, ENTITY_CENTER_Y, ENTITY_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
-                            collisionFoundX = true;
-                        }
-
-                        // Check for collision on the Y axis
-                        if (isCircleInRectangle(ENTITY_NEXT_CENTER_X, ENTITY_NEXT_CENTER_Y, ENTITY_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
-                            collisionFoundY = true;
-                        }
+                    // Choose witch way to turn
+                    if (distance(leftPoint, ENTITY.goalPoint) > distance(rightPoint, ENTITY.goalPoint)) {
+                        ENTITY.rotation -= ENTITY.rotationSpeed;
+                    } else {
+                        ENTITY.rotation += ENTITY.rotationSpeed;
                     }
                 }
+0
+                if (ENTITY.mainCharacter && direction !== null || !ENTITY.mainCharacter) {
+                    // Search for collision
+                    let collisionFoundX = false;
+                    let collisionFoundY = false;
+                    const ENTITY_CENTER_X = ENTITY.position.x + PLAYER_WIDTH / 2;
+                    const ENTITY_CENTER_Y = ENTITY.position.y + PLAYER_HEIGHT / 2;
+                    const ENTITY_NEXT_CENTER_X = ENTITY.position.x + Math.sin(ENTITY.rotation * Math.PI / 180) *
+                        ENTITY.moveSpeed * deltaTime + ENTITY.width / 2;
+                    const ENTITY_NEXT_CENTER_Y = ENTITY.position.y - Math.cos(ENTITY.rotation * Math.PI / 180) *
+                        ENTITY.moveSpeed * deltaTime + ENTITY.height / 2;
+                    const ENTITY_RADIUS = Math.sqrt(Math.pow(ENTITY.width, 2) + Math.pow(ENTITY.height, 2)) / 2;
+                    for (const BOX of localBoxColliders) {
+                        if (BOX !== ENTITY.collider) {
+                            // Check for collision on the X axis
+                            if (isCircleInRectangle(ENTITY_CENTER_X, ENTITY_CENTER_Y, ENTITY_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
+                                collisionFoundX = true;
+                            }
 
-                // Move forward
-                if (!collisionFoundX) {
-                    ENTITY.position.x -= Math.sin(ENTITY.rotation * Math.PI / 180) * ENTITY.moveSpeed * deltaTime;
-                }
+                            // Check for collision on the Y axis
+                            if (isCircleInRectangle(ENTITY_NEXT_CENTER_X, ENTITY_NEXT_CENTER_Y, ENTITY_RADIUS, BOX.position.x, BOX.position.y, BOX.width, BOX.height)) {
+                                collisionFoundY = true;
+                            }
+                        }
+                    }
 
-                if (!collisionFoundY) {
-                    ENTITY.position.y += Math.cos(ENTITY.rotation * Math.PI / 180) * ENTITY.moveSpeed * deltaTime;
+                    // Move forward
+                    if (!collisionFoundX) {
+                        ENTITY.position.x += Math.sin(ENTITY.rotation * Math.PI / 180) * ENTITY.moveSpeed * deltaTime;
+                    }
+
+                    if (!collisionFoundY) {
+                        ENTITY.position.y -= Math.cos(ENTITY.rotation * Math.PI / 180) * ENTITY.moveSpeed * deltaTime;
+                    }
                 }
             }
         }
@@ -436,6 +435,11 @@ setInterval(() => {
             textures[textureIndex].position = ENTITY.position;
             textures[textureIndex].width = ENTITY.width;
             textures[textureIndex].height = ENTITY.height;
+            textures[textureIndex].rotation = ENTITY.rotation;
+
+            if (ENTITY.mainCharacter) {
+                textures[textureIndex].color = "brown";
+            }
         }
 
         // Transform the collider size and position to the entity size and position
@@ -452,28 +456,12 @@ setInterval(() => {
     //#region Display
 
     // Draw the sword
-    CTX.save();
-    CTX.translate(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y);
-    CTX.rotate(swordRotation * Math.PI / 180);
-
-    CTX.fillStyle = "blue";
-    CTX.fillRect(-SWORD_WIDTH - PLAYER_WIDTH / 2 + (attacking ? SWORD_GAP_X_ATTACK : SWORD_GAP_X), -SWORD_HEIGHT / 2, SWORD_WIDTH, SWORD_HEIGHT);
-
-    CTX.restore();
-
-    // Draw the player
-    //playerRotation += 0.1;
-    if (playerRotation === 0) {
-        CTX.fillStyle = "brown";
-        CTX.fillRect(playerPosition.x - cameraPosition.x, playerPosition.y - cameraPosition.y, PLAYER_WIDTH, PLAYER_HEIGHT);
-    } else {
+    if (PLAYER !== null) {
         CTX.save();
-        CTX.translate(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y);
-        CTX.rotate(playerRotation * Math.PI / 180);
-
-        CTX.fillStyle = "brown";
-        CTX.fillRect(-PLAYER_WIDTH / 2, -PLAYER_HEIGHT / 2, PLAYER_WIDTH, PLAYER_HEIGHT);
-
+        CTX.translate(PLAYER.position.x + PLAYER.width / 2 - cameraPosition.x, PLAYER.position.y + PLAYER.height / 2 - cameraPosition.y);
+        CTX.rotate(swordRotation * Math.PI / 180);
+        CTX.fillStyle = "blue";
+        CTX.fillRect(-SWORD_WIDTH - PLAYER.width / 2 + (attacking ? SWORD_GAP_X_ATTACK : SWORD_GAP_X), -SWORD_HEIGHT / 2, SWORD_WIDTH, SWORD_HEIGHT);
         CTX.restore();
     }
 
@@ -481,7 +469,15 @@ setInterval(() => {
     for (const TEXTURE of localTextures) {
         if (TEXTURE.img === null) {
             CTX.fillStyle = TEXTURE.color;
-            CTX.fillRect(TEXTURE.position.x - cameraPosition.x, TEXTURE.position.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
+            if (TEXTURE.rotation === 0) {
+                CTX.fillRect(TEXTURE.position.x - cameraPosition.x, TEXTURE.position.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
+            } else {
+                CTX.save();
+                CTX.translate(TEXTURE.position.x + TEXTURE.width / 2 - cameraPosition.x, TEXTURE.position.y + TEXTURE.height / 2 - cameraPosition.y);
+                CTX.rotate(TEXTURE.rotation * Math.PI / 180);
+                CTX.fillRect(-TEXTURE.width / 2, -TEXTURE.height / 2, TEXTURE.width, TEXTURE.height);
+                CTX.restore();
+            }
         } else {
             CTX.drawImage(TEXTURE.img, TEXTURE.position.x - cameraPosition.x, TEXTURE.position.y - cameraPosition.y, TEXTURE.width, TEXTURE.height);
         }
@@ -506,14 +502,19 @@ setInterval(() => {
             CTX.strokeRect(BOX.position.x - cameraPosition.x, BOX.position.y - cameraPosition.y, BOX.width, BOX.height);
         }
 
-        // Draw player collider
-        CTX.arc(playerPosition.x + PLAYER_WIDTH / 2 - cameraPosition.x, playerPosition.y + PLAYER_HEIGHT / 2 - cameraPosition.y,
-            PLAYER_RADIUS, 0, Math.PI * 2);
-        CTX.stroke();
+        for (const ENTITY of localEntities) {
+            // Draw Entity move collider
+            CTX.arc(ENTITY.position.x + ENTITY.width / 2 - cameraPosition.x, ENTITY.position.y + ENTITY.height / 2 - cameraPosition.y,
+                Math.sqrt(Math.pow(ENTITY.width, 2) + Math.pow(ENTITY.height, 2)) / 2, 0, Math.PI * 2);
+            CTX.stroke();
+        }
 
         // Draw the hit point of the sword
-        CTX.fillStyle = "green";
-        CTX.fillRect(swordHitPoint.x - 5 - cameraPosition.x, swordHitPoint.y - 5 - cameraPosition.y, 10, 10);
+        if (PLAYER !== null) {
+            CTX.fillStyle = "green";
+            CTX.fillRect(swordHitPoint.x - 5 - cameraPosition.x, swordHitPoint.y - 5 - cameraPosition.y, 10, 10);
+        }
+
     }
 
     //#endregion
